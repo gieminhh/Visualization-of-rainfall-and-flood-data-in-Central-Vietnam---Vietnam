@@ -1,0 +1,60 @@
+
+## ERD
+
+Sơ đồ mô tả các thực thể và mối quan hệ phục vụ việc lưu trữ, phân tích và trực quan hóa dữ liệu mưa lũ miền Trung.
+
+```mermaid
+erDiagram
+    TINH_THANH ||--o{ TRAM_KHI_TUONG : co
+    TINH_THANH ||--o{ TRAM_THUY_VAN : co
+    TRAM_KHI_TUONG ||--o{ DU_LIEU_NGAY : ghi_nhan
+    DU_LIEU_NGAY ||--o| CHAT_LUONG : danh_gia
+    TRAM_THUY_VAN ||--o{ MUC_NUOC : ghi_nhan
+
+    TINH_THANH {
+        int province_code PK
+        string province_name
+    }
+
+    TRAM_KHI_TUONG {
+        string station_id PK
+        int province_code FK
+        string station_name
+        float latitude
+        float longitude
+    }
+
+    DU_LIEU_NGAY {
+        int id PK
+        string station_id FK
+        date ngay
+        float rainfall_mm
+        float temperature_c
+        float humidity_pct
+    }
+
+    CHAT_LUONG {
+        int daily_id PK,FK
+        string precip_status
+        string humidity_status
+    }
+
+    TRAM_THUY_VAN {
+        int hydro_station_id PK
+        int province_code FK
+        string station_name
+        string river_name
+    }
+
+    MUC_NUOC {
+        int id PK
+        int hydro_station_id FK
+        datetime observation_time
+        float river_level_m
+        string observation_type
+    }
+```
+
+**Trạng thái:** In queue.
+
+**Ghi chú:** Mô hình trên là phương án thiết kế sơ bộ dựa trên bộ dữ liệu CSV hiện có. Các thực thể, thuộc tính và khóa liên kết sẽ được điều chỉnh sau khi xác định phương án lưu trữ dữ liệu.
