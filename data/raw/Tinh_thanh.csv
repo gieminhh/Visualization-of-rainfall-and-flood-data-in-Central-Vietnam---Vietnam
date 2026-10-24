@@ -1,0 +1,15 @@
+﻿province_code,province_name,n_weather_stations,n_daily_rows,n_river_records,coverage_note
+1,Thanh Hóa,1,3846,7,Có khí tượng theo ngày
+2,Nghệ An,1,3836,0,Có khí tượng theo ngày
+3,Hà Tĩnh,1,2349,7,Có khí tượng theo ngày
+4,Quảng Bình,1,3835,34,Có khí tượng theo ngày
+5,Quảng Trị,0,0,12,Chưa có chuỗi khí tượng trong nguồn đã tải
+6,Thừa Thiên Huế / Huế,1,3922,21,Có khí tượng theo ngày
+7,Đà Nẵng,1,3922,0,Có khí tượng theo ngày
+8,Quảng Nam,0,0,10,Chưa có chuỗi khí tượng trong nguồn đã tải
+9,Quảng Ngãi,1,3835,7,Có khí tượng theo ngày
+10,Bình Định,1,3835,3,Có khí tượng theo ngày
+11,Phú Yên,0,0,0,Chưa có chuỗi khí tượng trong nguồn đã tải
+12,Khánh Hòa,4,14991,2,Có khí tượng theo ngày
+13,Ninh Thuận,0,0,0,Chưa có chuỗi khí tượng trong nguồn đã tải
+14,Bình Thuận,1,3816,0,Có khí tượng theo ngày

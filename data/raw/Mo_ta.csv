@@ -1,0 +1,36 @@
+﻿field_or_topic,data_type,unit,definition_or_value,notes
+datetime,datetime,UTC / ICT,"Dataset_ngay: ngày UTC, hiển thị 00:00 làm nhãn ngày; không phải giờ đo. Muc_nuoc_ban_tin: giờ quan trắc gốc tại Việt Nam (UTC+7).",Excel lưu số ngày có định dạng ngày giờ. Không ghép hai sheet trực tiếp theo datetime.
+longitude,float,độ Đông,Kinh độ trạm theo metadata NOAA; để trống khi chưa xác minh tọa độ thủy chí.,Tọa độ địa lý WGS84 theo nguồn. Không dùng tọa độ tâm tỉnh.
+latitude,float,độ Bắc,Vĩ độ trạm theo metadata NOAA; để trống khi chưa xác minh tọa độ thủy chí.,Không dùng tọa độ trạm mưa cùng tên thay cho trạm thủy văn.
+province_code,float,mã nội bộ,Mã 1.0–14.0 theo sheet Tinh_thanh; giữ địa giới tỉnh trước sáp nhập để nhất quán lịch sử.,"Là mã phân loại của dataset, không phải đại lượng liên tục hoặc mã hành chính nhà nước."
+station_name,string,,Tên trạm; khóa của mỗi sheet là datetime + station_name.,Trạm khí tượng và trạm thủy văn không được coi là cùng một trạm chỉ vì cùng tỉnh.
+rainfall_mm,float,mm/24h,"Tổng giáng thủy tương đương nước NOAA, chỉ giữ kỳ đủ 24 giờ theo cờ D/F/G/24.","Cờ A/B/C/E không đủ ngày; H/I không chứng minh được 0 mm, nên để trống. Số gốc giữ ở Chat_luong."
+river_level_m,float,m,Mực nước tại giờ bản tin hoặc đỉnh/cực trị được nêu rõ; xem observation_type.,"Trống trong Dataset_ngay. Không thay bằng lưu lượng, không ghép sang trạm khí tượng. Mốc cao độ chưa xác định từ bản tin."
+temperature_c,float,°C,Nhiệt độ trung bình ngày do NOAA công bố. GSOD Trường Sa đổi °F sang °C bằng (F−32)×5/9.,"Giữ trung bình của những giờ nguồn có quan trắc, không bảo đảm đủ 24 số đo."
+humidity_pct,float,% (0–100),Trung bình các giá trị RH hợp lệ theo giờ UTC; tối thiểu 4 giờ. ISD tính từ cặp T/Td; GHCNh theo trường RH và cờ nguồn.,"Là độ ẩm dẫn xuất từ quan trắc, không mặc định là RH đo trực tiếp. Không tính từ nhiệt độ trung bình ngày."
+Phạm vi yêu cầu,ghi chú,,2016-01-01 → 2026-10-06,"Thanh Hóa–Bình Thuận theo 14 tỉnh/thành trước sáp nhập. Có Song Tử Tây, Trường Sa thuộc Khánh Hòa trong danh mục nguồn."
+Ngày dữ liệu thực mới nhất,ghi chú,,2026-09-30,"Thu thập 05–06/10/2026. Mưa/nhiệt độ mới nhất 29/09/2026, độ ẩm 30/09/2026. Không tạo thêm số đo cho ngày chưa được nguồn công bố."
+Độ phủ khí tượng,ghi chú,,"48,187 dòng / 13 trạm / 10 tỉnh thành","Quảng Trị, Quảng Nam, Phú Yên, Ninh Thuận chưa có chuỗi khí tượng trong các nguồn đã tải. Phạm vi tìm kiếm bao gồm 14 tỉnh, dữ liệu không phủ đều."
+Mực nước,ghi chú,,103 số đo rời rạc,Sheet Muc_nuoc_ban_tin lưu đúng giờ/sự kiện và URL. Không phải chuỗi hằng ngày đầy đủ; tọa độ thủy chí chưa xác minh để trống.
+Dữ liệu thiếu,ghi chú,,Ô trống = null,"Không đổi ô thiếu thành 0, không nội suy, không dùng dự báo hay mô hình để lấp chỗ thiếu. Không có một hàng nào đủ cả khí tượng và mực nước cùng trạm."
+Ngày UTC,ghi chú,,00:00–23:59 UTC,Ngày UTC tương ứng 07:00 ngày đó đến trước 07:00 ngày sau ở Việt Nam. Tổng mưa SYNOP có thể bao gồm phần cuối ngày trước theo kỳ bản tin.
+Nguồn khí tượng chính,ghi chú,,NOAA SSODv2,"12 trạm, 2016–2026; sử dụng các tệp station/year gốc. Đơn vị native °C và mm."
+Nguồn khí tượng bổ sung,ghi chú,,NOAA GSOD — Trường Sa,"Trường Sa chưa có trong SSOD đã tải. Giữ GSOD, mưa inch×25.4→mm, nhiệt độ °F→°C."
+Công thức RH,ghi chú,,Magnus,"RH=100×exp(17.625×Td/(243.04+Td)−17.625×T/(243.04+T)); T,Td theo °C. Tính mỗi giờ rồi lấy trung bình ngày; ngưỡng 4 giờ là quy tắc của dataset."
+Chất lượng RH,ghi chú,,Xem humidity_method và humidity_status,"ISD-lite không có đầy đủ cờ QC, T và Td cùng dòng có thể lệch giờ gốc tối đa 10 phút. Loại cặp Td>T, giá trị thiếu và ngoài khoảng kiểm tra trong bước xử lý."
+Nguồn GHCNh RH,ghi chú,,"RH do NOAA suy ra, mã đo D","Giữ RH 1–100%, chỉ khi cờ chất lượng trống; lấy trung bình trong mỗi giờ rồi trung bình các giờ. Cam Ranh chưa thu được RH 2016–2024 trong bộ này."
+Ghép nguồn độ ẩm,ghi chú,,Theo mã trạm và ngày UTC,Chỉ ghép ISD với SSOD khi đã có ánh xạ mã và sai khác tọa độ ≤1 km. Vinh và Quảng Ngãi dùng GHCNh cùng ID nếu có; không ghép ISD từ địa điểm khác.
+Mưa cực lớn,ghi chú,,Cờ EXTREME_GE_500MM_REQUIRES_CHECK,Giữ nguyên số nguồn nhưng đánh dấu cần kiểm chứng. Ví dụ Đồng Hới 13/03/2021=872.9 mm khác GSOD cũ; không tự kết luận là lỗi hay tự sửa.
+Các dòng bị loại,ghi chú,,1127,"Chỉ loại khỏi Dataset_ngay khi cả mưa đủ kỳ, nhiệt độ và RH đều không có. Không suy ra không mưa từ ngày thiếu."
+Mức chính xác,ghi chú,,Theo nguồn,NOAA cảnh báo tổng mưa SYNOP có thể thiếu báo cáo. Bộ dữ liệu này chưa phải số liệu KTTV Việt Nam được đối soát/chứng nhận.
+Mã cờ mưa,ghi chú,,D/F/G/24,D=4×6h; F=2×12h; G=1×24h; 24=24 báo cáo giờ trong SSOD. A/B/C/E là kỳ thiếu; H/I không có tổng mưa chắc chắn.
+Mã trạng thái RH,ghi chú,,OK_MIN4 / NO_HOURLY_SOURCE / mismatch,"Số giờ được ghi riêng để đánh giá độ phủ. RH là % thang 0–100, không phải tỷ lệ 0–1."
+Định danh nguồn,ghi chú,,Tram_do + Chat_luong,Chat_luong ghép bằng datetime và station_name. source_station_id nối danh mục trạm; URL mẫu năm mới nhất ở Tram_do. Thay phần năm trong URL để truy nguyên năm khác.
+Phân loại lũ,ghi chú,,Chưa có nhãn lũ/không lũ,Mưa lớn không tự đồng nghĩa với lũ. Chưa có chuỗi đủ mực nước và mốc báo động để gán nhãn lũ hằng ngày.
+NOAA SSODv2,nguồn,,https://www.ncei.noaa.gov/products/global-historical-climatology-network-hourly/synoptic-summary-of-the-day,"Mô tả, mốc UTC và hạn chế của tổng mưa."
+SSOD schema,nguồn,,https://www.ncei.noaa.gov/oa/synoptic-summary-of-the-day/v2/doc/ssodv2_DOCUMENTATION.pdf,"Đơn vị, cờ và giá trị thiếu."
+NOAA GSOD,nguồn,,https://www.ncei.noaa.gov/data/global-summary-of-the-day/doc/readme.txt,Chuyển đổi đơn vị và giải mã cờ Trường Sa.
+ISD-lite,nguồn,,https://www.ncei.noaa.gov/pub/data/noaa/isd-lite/isd-lite-technical-document.txt,"Dữ liệu giờ phục vụ RH, giới hạn ghép thời gian và QC."
+Magnus RH,nguồn,,https://bmcnoldy.earth.miami.edu/Humidity.html,Công thức suy ra RH từ nhiệt độ và điểm sương.
+NOAA GHCNh,nguồn,,https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-hourly,"Nguồn hourly mới, cùng mã trạm SSOD, phục vụ RH."
+Bản tin mực nước,nguồn,,Xem source_url của từng dòng trong Muc_nuoc_ban_tin,Giữ số đo quan trắc; không đưa giá trị dự báo vào dataset.
