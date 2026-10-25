@@ -1,6 +1,7 @@
 import type { ExtremeRecord, NormalizedDataset, RiverRecord } from '../types/index.ts';
 import { aggregateDaily, aggregateMonthly, aggregateYearly, calculateSummaryStats, dateBoundary, filterDailyRecords, metricCompleteness, qualityStatsFromAggregates, toTimeSeries, validateFilter } from './dataProcessing.ts';
 import type { DataFilter, ObservationRange } from './dataProcessing.ts';
+import { datasetStorage } from './datasetStorage.ts';
 
 /** Injectable async repository; callers can keep this contract when REST replaces JSON. */
 export function createDataService(load: () => Promise<NormalizedDataset>) {
@@ -113,6 +114,8 @@ export function createDataService(load: () => Promise<NormalizedDataset>) {
 }
 
 export const dataService = createDataService(async () => {
+  const imported = await datasetStorage('read');
+  if (imported) return imported;
   const base = import.meta.env?.BASE_URL ?? '/';
   const response = await fetch(`${base}data/normalized_dataset.json`);
   if (!response.ok) throw new Error(`Không tải được dữ liệu (${response.status}). Hãy chạy npm run data:process.`);

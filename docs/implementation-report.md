@@ -1,3 +1,5 @@
+> Cập nhật 25/10/2026: AI Lab, nhập CSV và báo cáo đã được triển khai chạy thật theo yêu cầu bổ sung. Xem [chức năng nghiên cứu](research-workflows.md). Các phần khảo sát bên dưới mô tả giai đoạn xử lý dữ liệu ban đầu.
+
 # Báo cáo hoàn thiện logic dữ liệu
 
 ## Kiểm tra mã nguồn ban đầu
@@ -58,7 +60,7 @@ src/data/real_dataset.json được giữ nguyên như snapshot lịch sử đ�
 
 29 kiểm thử tự động bao phủ sáu yêu cầu bắt buộc: tháng thiếu mưa → null; tháng đầy đủ 0 mm → 0; cảnh báo năm thiếu; trung bình bỏ qua giá trị thiếu; bộ lọc đúng; tổng dòng khớp CSV. Có thêm kiểm thử khóa ghép, nguồn/hash, cờ kỳ mưa, số giờ RH, ngày nhuận, UTC/ICT, cực trị, lỗi parser và không ghi đè đầu ra khi xử lý thất bại.
 
-Các giới hạn chủ ý: chưa có backend/AI dự báo thật; chưa xác thực khoa học 7 số mưa cực lớn; không bổ sung các khoảng thiếu. CSV upload là xem trước. JSON chuẩn hóa khoảng 46,4 MB chưa nén, tải một lần và giữ cache trong phiên; khi triển khai mạng nên cấu hình HTTP compression hoặc tách dữ liệu theo trạm. Đây chưa phải bước triển khai hosting.
+Giới hạn hiện tại: chưa có backend đồng bộ; dự báo Ridge và trung bình mùa vụ chạy trên trình duyệt; chưa xác thực khoa học 7 số mưa cực lớn; không bổ sung các khoảng thiếu. CSV upload kiểm tra và thay bộ dữ liệu trên trình duyệt qua IndexedDB. JSON chuẩn hóa khoảng 46,4 MB chưa nén, tải một lần và giữ cache trong phiên; khi triển khai mạng nên cấu hình HTTP compression hoặc tách dữ liệu theo trạm. Đây chưa phải bước triển khai hosting.
 
 ## Kết quả kiểm tra bàn giao
 
@@ -70,3 +72,14 @@ Các giới hạn chủ ý: chưa có backend/AI dự báo thật; chưa xác th
 `npm run build` đã chạy lại thành công ở lượt bàn giao cuối (24/10/2026), gồm chuẩn hóa CSV và TypeScript. Còn cảnh báo bundle JavaScript khoảng 971 kB sau minify (285 kB gzip), vượt ngưỡng khuyến nghị 500 kB; không có lỗi build. JSON dữ liệu được tải riêng, không nhúng vào bundle JavaScript.
 
 Đóng gói GitHub: bỏ qua node_modules/, dist/, *.tsbuildinfo và JSON sinh tự động; pretest tạo lại JSON trước khi kiểm thử trên bản clone mới. .gitattributes giữ nguyên byte CSV. Đã bổ sung .gitignore, .gitattributes và README tương ứng.
+
+
+## Bổ sung chức năng ngày 25/10/2026
+
+- Bỏ số ngẫu nhiên, số đánh giá và lịch sử mẫu ở AI Lab; thay bằng Ridge và baseline mùa vụ, kiểm thử cuốn chiếu không dùng dữ liệu tương lai. Chưa triển khai SARIMA/XGBoost.
+- Nhập đủ sáu CSV, dùng chung bộ chuẩn hóa với CLI; lưu giao dịch IndexedDB và tải lại các trang sau khi áp dụng. Giữ nguồn đang dùng nếu kiểm tra/lưu thất bại.
+- Sổ tay nhận kết quả thực từ AI Lab; xuất HTML/Markdown và bản in để lưu PDF. Escape nội dung người dùng và báo lỗi lưu.
+- 39/39 bài kiểm thử đạt, bao gồm dự báo, nhập CSV, lưu cục bộ và báo cáo. TypeScript và bản build đạt.
+- Đã thao tác trình duyệt chạy Phú Bài, xem chỉ số, mở lại lịch sử, thêm sổ tay và tải HTML; tệp tải chứa đúng kết quả và hash nguồn.
+- Kiểm tra nhập CSV trên giao diện: thiếu tệp báo lỗi; chọn đủ 6 tệp → 48.187 bản ghi, ghép đủ chất lượng; áp dụng và tải lại hiện CSV đã nhập; dùng lại nguồn gốc thành công. Kiểm thử thêm xác nhận bộ nhập nhỏ hơn thật sự đổi số bản ghi và hash giữ nguyên cả BOM UTF-8.
+- Bản in chứa đầy đủ các block; tệp HTML tải xuống đã đối chiếu với phiên nghiên cứu. Biểu đồ dự báo và khoảng thiếu được kiểm tra trực quan.

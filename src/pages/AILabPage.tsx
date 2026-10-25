@@ -1,368 +1,118 @@
-import React, { useEffect, useState } from 'react';
-import {
-  FlaskConical, Play, RotateCcw, History, Info,
-  BarChart2, TrendingUp, AlertCircle
-} from 'lucide-react';
-import { Card, SectionHeader, Select, Button, Badge, Tabs, DemoBanner } from '../components/ui';
+import { useEffect, useState } from 'react';
+import { FlaskConical, Play, History, BarChart2, TrendingUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Card, SectionHeader, Select, Button, Badge, Tabs } from '../components/ui';
 import { ForecastChart } from '../components/charts';
 import { dataService } from '../services/dataService';
-import { getMetricUnit, formatMonthYear } from '../utils';
-import type { ModelType, ForecastHorizon, ModelMetrics, Station } from '../types';
+import { MODEL_NAMES, prepareMonths, runForecast } from '../services/forecasting';
+import type { ForecastResult, ResearchModel } from '../services/forecasting';
+import { downloadText, saveResearchSession } from '../services/reports';
+import type { DataManifest, ResearchSession, Station } from '../types';
 
-// ─── Demo forecast data generator ─────────────────────────────────────────────
-function generateDemoForecast(stationName: string, model: ModelType, horizon: ForecastHorizon) {
-  // Historical: 24 tháng trước tháng demo
-  const baseValues: Record<string, number[]> = {
-    'Phú Bài': [120, 95, 80, 65, 70, 55, 50, 85, 160, 420, 510, 290, 110, 90, 75, 60, 65, 50, 45, 80, 150, 400, 490, 270],
-    'Đà Nẵng': [80, 60, 50, 45, 55, 45, 40, 70, 135, 360, 460, 255, 75, 55, 45, 40, 50, 40, 35, 65, 125, 345, 440, 240],
-    'Thanh Hóa': [130, 105, 95, 85, 95, 105, 95, 155, 185, 205, 185, 145, 125, 100, 90, 80, 90, 100, 90, 150, 180, 200, 180, 140],
-    'Vinh': [115, 95, 85, 75, 85, 95, 85, 145, 175, 195, 175, 135, 110, 90, 80, 70, 80, 90, 80, 140, 170, 190, 170, 130],
-  };
-  const vals = baseValues[stationName] || baseValues['Phú Bài'];
-  const noise = (model === 'Baseline') ? 0.3 : model === 'XGBoost' ? 0.12 : 0.15;
-
-  const historical = vals.map((v, i) => ({
-    label: formatMonthYear(2024 + Math.floor(i / 12), (i % 12) + 1),
-    value: v + (Math.random() - 0.5) * v * 0.2,
-  }));
-
-  const lastVals = vals.slice(-3);
-  const forecastBase = lastVals.reduce((s, v) => s + v, 0) / lastVals.length;
-  const forecast = Array.from({ length: horizon }, (_, i) => {
-    const pred = forecastBase * (1 + (Math.random() - 0.5) * noise);
-    const uncertainty = pred * noise * (i + 1);
-    return {
-      label: formatMonthYear(2026, i + 10),
-      predicted: Math.max(0, pred),
-      lower: Math.max(0, pred - uncertainty),
-      upper: pred + uncertainty,
-    };
-  });
-
-  return { historical, forecast };
+const HISTORY_KEY = 'cfr_experiments_v1';
+interface SavedRun {
+  id: string; createdAt: string; station: string; selected: ResearchModel;
+  sources: DataManifest['source_files']; results: ForecastResult[];
 }
-
-// ─── Metrics comparison table ─────────────────────────────────────────────────
-const DEMO_METRICS: ModelMetrics[] = [
-  { model: 'SARIMA', mae: 42.3, rmse: 58.1, mape: 18.4, r2: 0.71 },
-  { model: 'XGBoost', mae: 35.8, rmse: 49.6, mape: 15.2, r2: 0.78 },
-  { model: 'Baseline', mae: 68.5, rmse: 91.2, mape: 28.7, r2: 0.43 },
-];
-
-const DEMO_EXPERIMENTS = [
-  { id: 'exp-001', station: 'Phú Bài', model: 'XGBoost', horizon: 3, date: '2026-10-15', mae: 35.8 },
-  { id: 'exp-002', station: 'Đà Nẵng', model: 'SARIMA', horizon: 1, date: '2026-10-12', mae: 42.3 },
-  { id: 'exp-003', station: 'Thanh Hóa', model: 'Baseline', horizon: 2, date: '2026-10-10', mae: 68.5 },
-];
+const number = (value: number | null) => value === null ? 'Không xác định' : value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
 export default function AILabPage() {
-  const [STATIONS, setStations] = useState<Station[]>([]);
-  const [dataError, setDataError] = useState('');
+  const [stations, setStations] = useState<Station[]>([]);
+  const [station, setStation] = useState('Phú Bài');
+  const [model, setModel] = useState<ResearchModel>('Ridge');
+  const [horizon, setHorizon] = useState(3);
+  const [tab, setTab] = useState('results');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [run, setRun] = useState<SavedRun | null>(null);
+  const [history, setHistory] = useState<SavedRun[]>([]);
   useEffect(() => {
     let active = true;
-    dataService.getStations().then(stations => { if (active) setStations(stations); })
-      .catch(error => { if (active) setDataError(String(error)); });
+    dataService.getStations().then(rows => {
+      if (active) { setStations(rows); setStation(rows.some(row => row.station_name === 'Phú Bài') ? 'Phú Bài' : rows[0]?.station_name ?? ''); }
+    }).catch(reason => { if (active) setError(String(reason)); });
+    try {
+      const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
+      if (!Array.isArray(stored) || stored.some(row => !Array.isArray(row.results) || !row.id)) throw new Error('Lịch sử không đúng cấu trúc.');
+      setHistory(stored);
+    } catch { setNotice('Không đọc được lịch sử thí nghiệm đã lưu trên trình duyệt.'); }
     return () => { active = false; };
   }, []);
-  const [tab, setTab] = useState('config');
-  const [station, setStation] = useState('Phú Bài');
-  const [model, setModel] = useState<ModelType>('XGBoost');
-  const [horizon, setHorizon] = useState<ForecastHorizon>(3);
-  const [isRunning, setIsRunning] = useState(false);
-  const [hasResult, setHasResult] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const result = run?.results.find(item => item.model === run.selected);
 
-  const { historical, forecast } = generateDemoForecast(station, model, horizon);
+  async function handleRun() {
+    setBusy(true); setError(''); setNotice(''); setRun(null);
+    try {
+      const [rows, manifest] = await Promise.all([dataService.getMonthlyData({ station_name: station }), dataService.getManifest()]);
+      const samples = prepareMonths(rows);
+      const results = (['Ridge', 'Seasonal'] as ResearchModel[]).map(name => runForecast(samples, name, horizon));
+      const completed: SavedRun = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), station, selected: model, sources: manifest.source_files, results };
+      const next = [completed, ...history].slice(0, 30);
+      setRun(completed); setHistory(next); setTab('results');
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); }
+      catch { setNotice('Đã tính xong nhưng không lưu được lịch sử. Hãy tải kết quả JSON để giữ lần chạy này.'); }
+    } catch (reason) { setError(String(reason)); }
+    finally { setBusy(false); }
+  }
 
-  const handleRun = () => {
-    setIsRunning(true);
-    setTimeout(() => {
-      setIsRunning(false);
-      setHasResult(true);
-      setTab('results');
-    }, 1800);
-  };
+  function addToNotebook() {
+    if (!run || !result) return;
+    const stamp = new Date().toISOString();
+    const session: ResearchSession = {
+      id: crypto.randomUUID(), title: `Dự báo mưa — ${run.station}`, description: `${MODEL_NAMES[result.model]} · ${result.horizon} tháng · lần chạy ${run.id}`,
+      created_at: stamp, updated_at: stamp, tags: ['dự báo', run.station],
+      blocks: [
+        { id: crypto.randomUUID(), type: 'dataset_methodology', title: 'Dữ liệu và phương pháp', created_at: stamp, updated_at: stamp,
+          content: `Giai đoạn nguồn: ${result.trainFrom} → ${result.trainTo}.\n${result.validMonths} tháng đầy đủ; ${result.excludedMonths} tháng thiếu/không trọn tháng bị loại. Không bù dữ liệu thiếu. Tháng đầy đủ gần nhất: ${result.lastValidMonth}.\nKiểm thử tại tối đa 12 mốc gần nhất có đủ quan trắc; mỗi lần chỉ học dữ liệu trước mốc dự báo. Tháng kiểm thử: ${result.backtest[0].date} → ${result.backtest[result.backtest.length - 1].date}.\nRidge dùng α = 1, đặc trưng xu hướng và ba cặp sin/cos chu kỳ năm; mô hình đối chiếu dùng trung bình cùng tháng. Các tháng cuối bị thiếu có thể làm sai số dự báo cao hơn sai số kiểm thử.\n\nDấu vân tay SHA-256 nguồn:\n${run.sources.map(source => `${source.name}: ${source.sha256}`).join('\n')}` },
+        { id: crypto.randomUUID(), type: 'statistical_results', title: 'Kết quả kiểm thử và dự báo', created_at: stamp, updated_at: stamp,
+          content: `MAE: ${number(result.metrics.mae)} mm; RMSE: ${number(result.metrics.rmse)} mm; MAPE: ${number(result.metrics.mape)}%; R²: ${number(result.metrics.r2)}.\n${result.metrics.n} cặp dự báo/quan trắc.\n\n${result.forecast.map(point => `${point.date}: ${number(point.predicted)} mm; khoảng sai số thực nghiệm ${number(point.lower)}–${number(point.upper)} mm`).join('\n')}\n\nKhoảng sai số lấy phân vị 90% sai số tuyệt đối kiểm thử, không bảo đảm xác suất bao phủ. Dự báo thống kê theo tháng, không phải cảnh báo thời tiết.` },
+      ],
+    };
+    try { saveResearchSession(session); setNotice('Đã thêm phiên nghiên cứu vào Sổ tay & báo cáo.'); }
+    catch (reason) { setError(`Không lưu được sổ tay: ${String(reason)}`); }
+  }
 
-  return (
-    <div className="space-y-4 max-w-[1400px]">
-      {dataError && <p className="text-sm text-red-600">{dataError}</p>}
-      <div>
-        <div className="flex items-center gap-2.5">
-          <FlaskConical size={22} style={{ color: '#0891B2' }} />
-          <h1 className="text-xl font-bold" style={{ color: '#12304A' }}>AI Research Lab</h1>
-          <Badge color="yellow">Mô phỏng giao diện — chưa chạy mô hình AI</Badge>
-        </div>
-        <p className="text-sm mt-1" style={{ color: '#64748B' }}>
-          Phòng thí nghiệm nghiên cứu mô hình dự báo — giao diện thử nghiệm (ML Experiment Dashboard)
-        </p>
+  return <div className="space-y-4 max-w-[1400px]">
+    <div><div className="flex items-center gap-2.5"><FlaskConical size={22} className="text-cyan-600" /><h1 className="text-xl font-bold text-slate-800">AI Research Lab</h1><Badge color="blue">Huấn luyện từ dữ liệu CSV</Badge></div><p className="text-sm mt-1 text-slate-500">Dự báo lượng mưa theo tháng, kiểm thử theo thời gian và lưu kết quả nghiên cứu.</p></div>
+    {error && <div role="alert" className="rounded-lg p-3 bg-red-50 text-red-700 text-sm">{error}</div>}
+    {notice && <div role="status" className="rounded-lg p-3 bg-blue-50 text-blue-700 text-sm">{notice} <Link to="/notebook" className="underline">Mở sổ tay</Link></div>}
+    <div className="grid grid-cols-3 gap-5">
+      <div className="space-y-4">
+        <Card className="p-4"><SectionHeader title="Cấu hình thí nghiệm" /><div className="space-y-3">
+          <Select label="Trạm nghiên cứu" value={station} onChange={setStation} options={stations.map(row => ({ value: row.station_name, label: row.station_name }))} />
+          <p className="text-xs text-slate-500">Biến mục tiêu: tổng lượng mưa tháng (mm). Chỉ dùng tháng có đủ ngày mưa hợp lệ.</p>
+          <Select label="Mô hình" value={model} onChange={value => setModel(value as ResearchModel)} options={Object.entries(MODEL_NAMES).map(([value, label]) => ({ value, label }))} />
+          <Select label="Thời hạn dự báo" value={String(horizon)} onChange={value => setHorizon(Number(value))} options={[1, 2, 3].map(value => ({ value: String(value), label: `${value} tháng` }))} />
+          <p className="text-xs text-slate-500">Mỗi lần chạy tính cả hai mô hình trên cùng tập kiểm thử. Cần tối thiểu 36 tháng đầy đủ và 6 mẫu kiểm thử cho mỗi hạn.</p>
+          <Button className="w-full justify-center" disabled={busy || !station} onClick={() => void handleRun()}><Play size={14} />{busy ? 'Đang tính toán…' : 'Huấn luyện & đánh giá'}</Button>
+        </div></Card>
+        <Card className="p-4 text-xs text-slate-600 space-y-2"><strong>{MODEL_NAMES[model]}</strong><p>{model === 'Ridge' ? 'Hồi quy có điều chuẩn (α = 1), học xu hướng và ba cặp đặc trưng chu kỳ năm từ dữ liệu trạm.' : 'Dự báo bằng trung bình lượng mưa của cùng tháng trong các năm thuộc tập huấn luyện.'}</p><p>Không nội suy tháng thiếu. Tổng mưa cực lớn đủ kỳ vẫn giữ theo nguồn, chưa được xác thực độc lập.</p><p>SARIMA và XGBoost chưa được triển khai; không hiển thị kết quả giả lập cho hai mô hình này.</p></Card>
       </div>
-
-      {/* AI Demo notice */}
-      <div className="rounded-lg px-4 py-3 flex items-start gap-3"
-        style={{ backgroundColor: '#FFF7ED', border: '1px solid #FED7AA', color: '#92400E' }}>
-        <AlertCircle size={16} className="flex-shrink-0 mt-0.5" style={{ color: '#D97706' }} />
-        <div className="text-sm">
-          <strong>Giao diện mô phỏng — Chưa huấn luyện mô hình AI thật.</strong>{' '}
-          Các kết quả hiển thị là dữ liệu DEMO để minh họa quy trình nghiên cứu.
-          Trong giai đoạn tiếp theo, hệ thống sẽ tích hợp backend Python (SARIMA, XGBoost) để chạy thực tế.
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-5">
-        {/* Config panel */}
-        <div className="col-span-1 space-y-4">
-          <Card className="p-4">
-            <SectionHeader title="Cấu hình thí nghiệm" />
-            <div className="space-y-3">
-              <Select
-                label="Trạm nghiên cứu"
-                value={station}
-                onChange={v => { setStation(v); setHasResult(false); }}
-                options={STATIONS.filter(s => s.n_rows > 0).map(s => ({ value: s.station_name, label: s.station_name }))}
-              />
-              <Select
-                label="Biến mục tiêu"
-                value="rainfall_mm"
-                onChange={() => {}}
-                options={[{ value: 'rainfall_mm', label: 'Lượng mưa theo tháng (mm)' }]}
-              />
-              <div>
-                <div className="text-xs font-medium mb-1" style={{ color: '#64748B' }}>Dữ liệu huấn luyện</div>
-                <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: '#E2E8F0', color: '#475569' }}>
-                  2016–2024 (mô phỏng)
-                </div>
-              </div>
-              <Select
-                label="Mô hình"
-                value={model}
-                onChange={v => { setModel(v as ModelType); setHasResult(false); }}
-                options={[
-                  { value: 'SARIMA', label: 'SARIMA (Time-series)' },
-                  { value: 'XGBoost', label: 'XGBoost (Gradient Boosting)' },
-                  { value: 'Baseline', label: 'Baseline (Moving Average)' },
-                ]}
-              />
-              <div>
-                <div className="text-xs font-medium mb-1.5" style={{ color: '#64748B' }}>Thời hạn dự báo</div>
-                <div className="flex gap-2">
-                  {([1, 2, 3] as ForecastHorizon[]).map(h => (
-                    <button
-                      key={h}
-                      onClick={() => { setHorizon(h); setHasResult(false); }}
-                      className="flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors"
-                      style={horizon === h
-                        ? { backgroundColor: '#0891B2', color: 'white', borderColor: '#0891B2' }
-                        : { backgroundColor: '#F8FAFC', color: '#64748B', borderColor: '#E2E8F0' }}
-                    >
-                      {h} tháng
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs font-medium mb-1" style={{ color: '#64748B' }}>Phương pháp đánh giá</div>
-                <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: '#E2E8F0', color: '#475569' }}>
-                  Time-series Backtesting (mô phỏng)
-                </div>
-              </div>
-
-              <Button
-                variant="primary"
-                className="w-full justify-center"
-                onClick={handleRun}
-                disabled={isRunning}
-              >
-                {isRunning ? (
-                  <><span className="animate-spin inline-block w-3 h-3 border border-white border-t-transparent rounded-full" /> Đang chạy...</>
-                ) : (
-                  <><Play size={14} /> Chạy thử nghiệm (DEMO)</>
-                )}
-              </Button>
-              {isRunning && (
-                <div className="text-xs text-center" style={{ color: '#94A3B8' }}>
-                  Mô phỏng quy trình — không có tính toán thật
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {/* Model info */}
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Info size={14} style={{ color: '#0891B2' }} />
-              <div className="text-sm font-semibold" style={{ color: '#1E293B' }}>Về mô hình {model}</div>
-            </div>
-            <div className="text-xs space-y-1.5" style={{ color: '#64748B' }}>
-              {model === 'SARIMA' && <>
-                <p>SARIMA (Seasonal ARIMA) là mô hình chuỗi thời gian cổ điển, phù hợp với dữ liệu có chu kỳ mùa vụ rõ ràng.</p>
-                <p>Tham số: p, d, q (AR, diff, MA) + P, D, Q, s (seasonal).</p>
-              </>}
-              {model === 'XGBoost' && <>
-                <p>XGBoost là thuật toán gradient boosting, có thể học các đặc trưng phi tuyến và tương tác phức tạp.</p>
-                <p>Features: lag values, month, year, rolling stats.</p>
-              </>}
-              {model === 'Baseline' && <>
-                <p>Baseline sử dụng trung bình trượt (moving average) làm dự báo đơn giản để so sánh với các mô hình phức tạp hơn.</p>
-              </>}
-            </div>
-          </Card>
-        </div>
-
-        {/* Results panel */}
-        <div className="col-span-2 space-y-4">
-          <Card className="overflow-hidden">
-            <div className="px-4 pt-4 border-b" style={{ borderColor: '#E2E8F0' }}>
-              <Tabs
-                tabs={[
-                  { id: 'results', label: 'Kết quả dự báo', icon: <TrendingUp size={14} /> },
-                  { id: 'metrics', label: 'Đánh giá mô hình', icon: <BarChart2 size={14} /> },
-                  { id: 'history', label: 'Lịch sử thí nghiệm', icon: <History size={14} /> },
-                ]}
-                activeTab={tab === 'config' ? 'results' : tab}
-                onChange={setTab}
-              />
-            </div>
-
-            <div className="p-4">
-              {(tab === 'results' || tab === 'config') && (
-                <div className="space-y-4">
-                  {!hasResult ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-center">
-                      <FlaskConical size={40} style={{ color: '#CBD5E1' }} className="mb-3" />
-                      <div className="font-semibold text-base" style={{ color: '#94A3B8' }}>Chưa có kết quả</div>
-                      <div className="text-sm mt-1" style={{ color: '#CBD5E1' }}>Cấu hình và nhấn "Chạy thử nghiệm" để xem minh họa</div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm font-semibold" style={{ color: '#1E293B' }}>
-                          Dự báo lượng mưa — {station} · {model} · {horizon} tháng
-                        </div>
-                        <Badge color="yellow">DỮ LIỆU DEMO</Badge>
-                      </div>
-                      <ForecastChart
-                        historical={historical}
-                        forecast={forecast}
-                        metric="rainfall_mm"
-                      />
-                      <div className="rounded-lg px-3 py-2 text-xs"
-                        style={{ backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', color: '#0369A1' }}>
-                        ℹ️ Vùng bóng xanh là khoảng bất định dự báo (confidence interval mô phỏng).
-                        Đường đứt là giá trị dự báo điểm.
-                      </div>
-
-                      {/* Forecast values */}
-                      <div className="grid grid-cols-3 gap-3">
-                        {forecast.map((f, i) => (
-                          <div key={i} className="rounded-lg p-3 text-center"
-                            style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                            <div className="text-xs" style={{ color: '#94A3B8' }}>{f.label}</div>
-                            <div className="text-xl font-bold mt-1" style={{ color: '#0891B2' }}>
-                              {f.predicted.toFixed(1)} mm
-                            </div>
-                            <div className="text-xs mt-0.5" style={{ color: '#CBD5E1' }}>
-                              [{f.lower.toFixed(0)}–{f.upper.toFixed(0)}]
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {tab === 'metrics' && (
-                <div className="space-y-4">
-                  <div className="text-sm font-semibold" style={{ color: '#1E293B' }}>
-                    So sánh hiệu suất mô hình
-                  </div>
-                  <DemoBanner />
-                  <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#E2E8F0' }}>
-                    <table className="w-full text-xs">
-                      <thead style={{ backgroundColor: '#F8FAFC' }}>
-                        <tr>
-                          {['Mô hình', 'MAE (mm)', 'RMSE (mm)', 'MAPE (%)', 'R²'].map(h => (
-                            <th key={h} className="text-left px-4 py-3 font-semibold border-b"
-                              style={{ color: '#475569', borderColor: '#E2E8F0' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {DEMO_METRICS.map((m, i) => (
-                          <tr key={m.model} className="border-t hover:bg-slate-50"
-                            style={{ borderColor: '#F1F5F9', backgroundColor: m.model === model ? '#F0F9FF' : '' }}>
-                            <td className="px-4 py-3 font-semibold" style={{ color: '#1E293B' }}>
-                              {m.model}
-                              {m.model === model && <Badge color="blue" >Đang chọn</Badge>}
-                            </td>
-                            <td className="px-4 py-3 font-medium"
-                              style={{ color: m.mae === Math.min(...DEMO_METRICS.map(x => x.mae)) ? '#059669' : '#475569' }}>
-                              {m.mae}
-                            </td>
-                            <td className="px-4 py-3" style={{ color: '#475569' }}>{m.rmse}</td>
-                            <td className="px-4 py-3" style={{ color: '#475569' }}>{m.mape}%</td>
-                            <td className="px-4 py-3 font-medium"
-                              style={{ color: m.r2 && m.r2 > 0.7 ? '#059669' : '#D97706' }}>
-                              {m.r2?.toFixed(2)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="rounded-lg p-3 text-xs"
-                    style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-                    ⚠️ Các chỉ số trên là dữ liệu minh họa. Giá trị thực cần được tính từ quá trình backtesting với dataset thực tế.
-                  </div>
-                </div>
-              )}
-
-              {tab === 'history' && (
-                <div className="space-y-3">
-                  <div className="text-sm font-semibold" style={{ color: '#1E293B' }}>
-                    Lịch sử thí nghiệm (DEMO)
-                  </div>
-                  <div className="space-y-2">
-                    {DEMO_EXPERIMENTS.map(exp => (
-                      <div key={exp.id} className="flex items-center gap-3 p-3 rounded-lg border hover:shadow-sm transition-shadow"
-                        style={{ borderColor: '#E2E8F0', backgroundColor: '#FAFAFA' }}>
-                        <FlaskConical size={16} style={{ color: '#0891B2' }} />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium" style={{ color: '#1E293B' }}>
-                            {exp.station} · {exp.model} · {exp.horizon}M
-                          </div>
-                          <div className="text-xs" style={{ color: '#94A3B8' }}>
-                            {exp.date} · MAE: {exp.mae} mm
-                          </div>
-                        </div>
-                        <Badge color="slate">{exp.id}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="text-xs" style={{ color: '#94A3B8' }}>
-                    ℹ️ Lịch sử thí nghiệm thực sẽ được lưu vào database khi tích hợp backend.
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {/* Limitations note */}
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertCircle size={14} style={{ color: '#D97706' }} />
-              <div className="text-sm font-semibold" style={{ color: '#1E293B' }}>Giới hạn và lưu ý dự báo</div>
-            </div>
-            <ul className="text-xs space-y-1.5" style={{ color: '#64748B' }}>
-              <li>• Dự báo mưa theo tháng chỉ có giá trị thống kê, không phải dự báo thời tiết thời gian thực.</li>
-              <li>• Mô hình cần ít nhất 5 năm dữ liệu liên tục để ổn định (backtesting).</li>
-              <li>• Hiện chưa có tích hợp biến ngoại sinh (ENSO, áp suất, gió mùa).</li>
-              <li>• Kết quả dự báo có thể kém tin cậy với dữ liệu thiếu &gt;10%.</li>
-              <li>• Giai đoạn này: giao diện mô phỏng — không có huấn luyện mô hình thực.</li>
-            </ul>
-          </Card>
-        </div>
+      <div className="col-span-2 space-y-4">
+        <Card className="overflow-hidden"><div className="px-4 pt-4 border-b border-slate-200"><Tabs tabs={[{ id: 'results', label: 'Kết quả dự báo', icon: <TrendingUp size={14} /> }, { id: 'metrics', label: 'Đánh giá mô hình', icon: <BarChart2 size={14} /> }, { id: 'history', label: 'Lịch sử thí nghiệm', icon: <History size={14} /> }]} activeTab={tab} onChange={setTab} /></div>
+          <div className="p-4 space-y-4">
+            {tab !== 'history' && !result && <p className="py-16 text-center text-slate-500">Chọn trạm và nhấn “Huấn luyện & đánh giá” để tính kết quả.</p>}
+            {tab === 'results' && run && result && <>
+              <h2 className="font-semibold text-slate-800">{run.station} · {MODEL_NAMES[result.model]} · {result.horizon} tháng</h2>
+              <p className="text-xs text-slate-500">Lần chạy {new Date(run.createdAt).toLocaleString('vi-VN')}. Nguồn {result.trainFrom} → {result.trainTo}; {result.validMonths} tháng dùng được, {result.excludedMonths} tháng loại. Tháng đầy đủ gần nhất: {result.lastValidMonth}. Dự báo bắt đầu sau tháng cuối của bộ dữ liệu.</p>
+              {result.lastValidMonth !== result.trainTo && <p className="rounded p-3 text-xs bg-amber-50 text-amber-900">Các tháng cuối nguồn không đủ quan trắc để học. Mô hình dùng lịch sử đầy đủ đến {result.lastValidMonth}; sai số kiểm thử trên những giai đoạn đầy đủ có thể thấp hơn sai số dự báo hiện tại.</p>}
+              <ForecastChart historical={result.historical.map(row => ({ label: row.date, value: row.value }))} forecast={result.forecast.map(row => ({ label: row.date, ...row }))} metric="rainfall_mm" />
+              <div className="grid grid-cols-3 gap-3">{result.forecast.map(point => <div key={point.date} className="rounded-lg p-3 bg-slate-50 border border-slate-200 text-center"><p className="text-xs text-slate-500">{point.date}</p><p className="text-xl font-bold text-cyan-700">{number(point.predicted)} mm</p><p className="text-xs text-slate-500">{number(point.lower)}–{number(point.upper)} mm</p></div>)}</div>
+              <p className="text-xs text-slate-500">Dải sai số lấy phân vị 90% sai số tuyệt đối của các lần kiểm thử cùng hạn. Đây là khoảng thực nghiệm trên mẫu nhỏ, không phải khoảng tin cậy đã hiệu chuẩn.</p>
+              <div className="flex gap-2"><Button variant="secondary" onClick={() => downloadText(`thi-nghiem-${run.id}.json`, JSON.stringify(run, null, 2), 'application/json')}>Tải kết quả JSON</Button><Button onClick={addToNotebook}>Thêm vào sổ tay</Button></div>
+            </>}
+            {tab === 'metrics' && run && result && <>
+              <p className="text-sm text-slate-600">{run.station} · 12 mốc gần nhất có đủ quan trắc để kiểm thử (hoặc ít hơn nếu nguồn thiếu), mỗi mốc chỉ học từ quá khứ. Tháng kiểm thử: {result.backtest[0].date} → {result.backtest[result.backtest.length - 1].date}. MAPE bỏ các quan trắc bằng 0; R² không xác định nếu quan trắc không biến thiên.</p>
+              <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr>{['Mô hình', 'Số mẫu', 'MAE (mm)', 'RMSE (mm)', 'MAPE (%)', 'R²'].map(label => <th key={label} className="text-left p-2 border-b">{label}</th>)}</tr></thead><tbody>{run.results.map(item => <tr key={item.model}><td className="p-2">{MODEL_NAMES[item.model]}</td><td>{item.metrics.n}</td><td>{number(item.metrics.mae)}</td><td>{number(item.metrics.rmse)}</td><td>{number(item.metrics.mape)} ({item.metrics.mape_n} mẫu)</td><td>{number(item.metrics.r2)}</td></tr>)}</tbody></table></div>
+              <p className="text-xs text-slate-500">Theo hạn của {MODEL_NAMES[result.model]}: {result.metricsByLead.map(item => `${item.lead} tháng: MAE ${number(item.mae)} mm (${item.n} mẫu)`).join(' · ')}</p>
+              <details><summary className="text-sm cursor-pointer">Xem từng dự báo kiểm thử</summary><div className="overflow-auto max-h-80"><table className="w-full text-xs"><thead><tr>{['Mốc học đến', 'Tháng kiểm thử', 'Hạn', 'Quan trắc', 'Dự báo'].map(label => <th key={label} className="p-2 text-left">{label}</th>)}</tr></thead><tbody>{result.backtest.map(point => <tr key={`${point.origin}:${point.lead}`}><td className="p-2">{point.origin}</td><td>{point.date}</td><td>{point.lead}</td><td>{number(point.actual)}</td><td>{number(point.predicted)}</td></tr>)}</tbody></table></div></details>
+            </>}
+            {tab === 'history' && <><p className="text-xs text-slate-500">Giữ tối đa 30 lần chạy trên trình duyệt này. Mỗi lần lưu cấu hình và dấu vân tay bộ CSV; kết quả cũ không thay đổi khi nhập nguồn mới.</p>{!history.length && <p className="py-12 text-center text-slate-500">Chưa có lần chạy nào.</p>}{history.map(item => <button key={item.id} className="w-full text-left rounded-lg p-3 border border-slate-200 hover:bg-slate-50" onClick={() => { setRun(item); setTab('results'); }}><span className="font-medium text-sm">{item.station} · {MODEL_NAMES[item.selected]}</span><p className="text-xs text-slate-500">{new Date(item.createdAt).toLocaleString('vi-VN')} · mở kết quả đã lưu</p></button>)}</>}
+          </div>
+        </Card>
+        <Card className="p-4 text-xs text-slate-600">Kết quả phục vụ nghiên cứu thống kê từ dữ liệu lịch sử. Không dùng thay dự báo thời tiết hoặc cảnh báo lũ thời gian thực.</Card>
       </div>
     </div>
-  );
+  </div>;
 }

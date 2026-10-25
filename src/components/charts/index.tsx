@@ -1,6 +1,6 @@
 import React, { useId } from 'react';
 import {
-  LineChart, Line, BarChart, Bar, AreaChart, Area,
+  LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   ReferenceLine
 } from 'recharts';
@@ -305,14 +305,12 @@ export function ComparisonLineChart({ dataA, dataB, labelA, labelB, metric, heig
 
 // ─── Forecast Chart (with uncertainty band) ──────────────────────────────────
 interface ForecastChartProps {
-  historical: { label: string; value: number }[];
+  historical: { label: string; value: number | null }[];
   forecast: { label: string; predicted: number; lower: number; upper: number }[];
   metric: MetricKey;
 }
 
 export function ForecastChart({ historical, forecast, metric }: ForecastChartProps) {
-  const histData = historical.map(d => ({ ...d, type: 'Lịch sử' }));
-  const forecastData = forecast.map(d => ({ label: d.label, predicted: d.predicted, lower: d.lower, upper: d.upper, type: 'Dự báo' }));
   const allLabels = [...historical.map(d => d.label), ...forecast.map(d => d.label)];
 
   const chartData = allLabels.map(lbl => {
@@ -320,8 +318,8 @@ export function ForecastChart({ historical, forecast, metric }: ForecastChartPro
     const f = forecast.find(d => d.label === lbl);
     return {
       label: lbl,
-      'Lịch sử mô phỏng': h?.value ?? null,
-      'Dự báo mô phỏng': f?.predicted ?? null,
+      'Quan trắc tháng đầy đủ': h?.value ?? null,
+      'Dự báo từ mô hình': f?.predicted ?? null,
       lower: f?.lower ?? null,
       upper: f?.upper ?? null,
     };
@@ -331,7 +329,7 @@ export function ForecastChart({ historical, forecast, metric }: ForecastChartPro
 
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <AreaChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+      <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
         <defs>
           <linearGradient id="gradForecast" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#0891B2" stopOpacity={0.2} />
@@ -346,9 +344,9 @@ export function ForecastChart({ historical, forecast, metric }: ForecastChartPro
         {lastHistLabel && <ReferenceLine x={lastHistLabel} stroke="#D97706" strokeDasharray="4 2" label={{ value: 'Điểm dự báo', fontSize: 10, fill: '#D97706' }} />}
         <Area type="monotone" dataKey="upper" name="Giới hạn trên" stroke="none" fill="#E0F2FE" fillOpacity={0.6} legendType="none" />
         <Area type="monotone" dataKey="lower" name="Giới hạn dưới" stroke="none" fill="#FFFFFF" fillOpacity={1} legendType="none" />
-        <Line type="monotone" dataKey="Lịch sử mô phỏng" stroke="#2563EB" strokeWidth={2} dot={false} connectNulls={false} />
-        <Line type="monotone" dataKey="Dự báo mô phỏng" stroke="#0891B2" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 4, fill: '#0891B2' }} connectNulls />
-      </AreaChart>
+        <Line type="linear" dataKey="Quan trắc tháng đầy đủ" stroke="#2563EB" strokeWidth={2} dot={false} connectNulls={false} />
+        <Line type="linear" dataKey="Dự báo từ mô hình" stroke="#0891B2" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 4, fill: '#0891B2' }} connectNulls={false} />
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }

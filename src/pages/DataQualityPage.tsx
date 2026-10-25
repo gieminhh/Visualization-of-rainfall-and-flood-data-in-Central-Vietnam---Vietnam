@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import Papa from 'papaparse';
-import { Database, Upload, AlertTriangle, CheckCircle2, FileText, Eye, X, Info } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import CSVImportPanel from '../components/CSVImportPanel';
+import { Database, Upload, AlertTriangle, CheckCircle2, FileText, Info } from 'lucide-react';
 import { Card, Button, Badge, Tabs, Select, EmptyState, LoadingSpinner } from '../components/ui';
 import { CompletenessHeatmap } from '../components/charts';
 import { dataService } from '../services/dataService';
@@ -38,62 +38,6 @@ async function loadQuality(filter: Parameters<typeof dataService.getQualityStats
     dataService.getQualityStats(filter), dataService.getSummaryStats(filter), dataService.getAnomalies(filter),
   ]);
   return { stats, summary, anomalies };
-}
-
-function CSVUploadPanel() {
-  const [preview, setPreview] = useState<{ headers: string[]; rows: string[][]; count: number; errors: string[]; schema: string | null } | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
-  const readId = useRef(0);
-
-  const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const id = ++readId.current;
-    setFileName(file.name);
-    setPreview(null);
-    setError('');
-    const reader = new FileReader();
-    reader.onerror = () => { if (id === readId.current) setError('Không đọc được tệp CSV.'); };
-    reader.onload = result => {
-      if (id !== readId.current) return;
-      const parsed = Papa.parse<string[]>(String(result.target?.result ?? ''), { skipEmptyLines: 'greedy' });
-      const [rawHeaders = [], ...rows] = parsed.data;
-      const headers = rawHeaders.map(header => header.replace(/^\uFEFF/, '').trim());
-      const schema = DATASETS.find(dataset => dataset.name.toLowerCase() === file.name.toLowerCase())
-        ?? DATASETS.find(dataset => dataset.fields.every(field => headers.includes(field)));
-      const errors = parsed.errors.map(issue => `Dòng ${(issue.row ?? 0) + 1}: ${issue.message}`);
-      if (!headers.length || headers.every(header => !header)) errors.push('Tệp không có hàng tiêu đề.');
-      if (headers.some(header => !header)) errors.push('Có tên cột trống.');
-      if (new Set(headers).size !== headers.length) errors.push('Có tên cột trùng nhau.');
-      if (!rows.length) errors.push('Tệp không có bản ghi dữ liệu.');
-      if (!schema) errors.push('Chưa nhận diện được cấu trúc của một trong các CSV nguồn.');
-      if (schema) {
-        const missing = schema.fields.filter(field => !headers.includes(field));
-        if (missing.length) errors.push(`Thiếu cột: ${missing.join(', ')}.`);
-      }
-      const malformed = rows.filter(row => row.length !== headers.length).length;
-      if (malformed) errors.push(`${formatCount(malformed)} dòng có số ô khác số cột trong tiêu đề.`);
-      setPreview({ headers, rows: rows.slice(0, 10), count: rows.length, errors, schema: schema?.name ?? null });
-    };
-    reader.readAsText(file, 'utf-8');
-  };
-
-  return <div className="space-y-4">
-    <div className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors hover:border-blue-400" style={{ borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' }} onClick={() => fileRef.current?.click()}>
-      <Upload size={28} className="mx-auto mb-3 text-slate-400" />
-      <div className="text-sm font-medium text-slate-600">{fileName ? `Đã đọc tệp: ${fileName}` : 'Nhấn để chọn file CSV cần kiểm tra cấu trúc'}</div>
-      <div className="text-xs mt-1 text-slate-400">Đọc dấu phẩy, dấu ngoặc kép và xuống dòng trong ô. Chỉ xem trước trên trình duyệt; chưa lưu vào bộ dữ liệu.</div>
-      <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
-    </div>
-    {error && <div role="alert" className="text-xs text-red-600">{error}</div>}
-    {preview && <div className="bg-white p-4 rounded-xl border border-slate-200">
-      <div className="flex items-center gap-2 mb-2"><Eye size={14} className="text-cyan-600" /><span className="text-sm font-semibold text-slate-800">Xem trước {preview.rows.length} / {formatCount(preview.count)} dòng</span><button aria-label="Đóng xem trước" onClick={() => { ++readId.current; setPreview(null); setFileName(null); if (fileRef.current) fileRef.current.value = ''; }} className="ml-auto text-slate-400 hover:text-slate-600"><X size={14} /></button></div>
-      <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full text-xs"><thead className="bg-slate-50"><tr>{preview.headers.map((header, index) => <th key={index} className="text-left px-2.5 py-2 font-semibold border-b border-slate-200 text-slate-600 whitespace-nowrap">{header}</th>)}</tr></thead><tbody>{preview.rows.map((row, index) => <tr key={index} className="border-t border-slate-100">{row.map((cell, column) => <td key={column} className="px-2.5 py-1.5 text-slate-500 whitespace-nowrap">{cell}</td>)}</tr>)}</tbody></table></div>
-      {preview.errors.length ? <div role="alert" className="mt-2 text-xs text-red-700 space-y-1">{preview.errors.map((issue, index) => <p key={index}>{issue}</p>)}</div> : <div className="mt-2 text-xs text-blue-700">Cấu trúc cột phù hợp {preview.schema}. Chưa kiểm tra chất lượng từng giá trị và chưa nhập vào dữ liệu đang phân tích.</div>}
-    </div>}
-  </div>;
 }
 
 export default function DataQualityPage() {
@@ -174,7 +118,7 @@ export default function DataQualityPage() {
         { id: 'quality', label: '2. Chất lượng & độ đầy đủ', icon: <CheckCircle2 size={14} /> },
         { id: 'anomalies', label: '3. Bất thường & cần kiểm chứng', icon: <AlertTriangle size={14} /> },
         { id: 'dictionary', label: '4. Từ điển dữ liệu', icon: <FileText size={14} /> },
-        { id: 'upload', label: '5. Nhập thêm dữ liệu CSV', icon: <Upload size={14} /> },
+        { id: 'upload', label: '5. Nhập bộ dữ liệu CSV', icon: <Upload size={14} /> },
       ]} activeTab={tab} onChange={setTab} /></div>
       <div className="p-4">
         {(tab === 'quality' || tab === 'anomalies') && <div className="grid grid-cols-4 gap-3 mb-4">
@@ -235,7 +179,7 @@ export default function DataQualityPage() {
 
         {tab === 'dictionary' && <div className="space-y-3"><div className="text-xs text-slate-500">Nội dung nguyên bản từ Mo_ta.csv ({descriptions.length} mục)</div>{!descriptions.length ? <EmptyState title="Chưa có từ điển dữ liệu" /> : <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full text-xs"><thead className="bg-slate-50"><tr>{['Trường / Chủ đề', 'Kiểu dữ liệu', 'Đơn vị', 'Định nghĩa & Giá trị', 'Ghi chú phương pháp'].map(header => <th key={header} className="text-left px-3 py-2 font-semibold text-slate-600">{header}</th>)}</tr></thead><tbody>{descriptions.map((description, index) => <tr key={index} className="border-t border-slate-100 hover:bg-slate-50"><td className="px-3 py-2 font-mono font-medium text-blue-700">{description.field_or_topic}</td><td className="px-3 py-2 font-mono text-slate-500">{description.data_type}</td><td className="px-3 py-2 text-slate-600">{description.unit || '—'}</td><td className="px-3 py-2 text-slate-700">{description.definition_or_value}</td><td className="px-3 py-2 text-slate-500 italic">{description.notes}</td></tr>)}</tbody></table></div>}</div>}
 
-        {tab === 'upload' && <div className="space-y-4"><div className="text-sm font-semibold text-slate-800">Nhập dữ liệu CSV mới để kiểm tra cấu trúc</div><CSVUploadPanel /><div className="rounded-lg p-4 bg-slate-50 border border-slate-200"><div className="text-sm font-semibold mb-2 text-slate-800">Phạm vi chức năng nhập dữ liệu</div><p className="text-xs text-slate-600">Tệp được đọc cục bộ để xem trước và kiểm tra cấu trúc. Để cập nhật bộ dữ liệu nghiên cứu, cần chạy quy trình xử lý CSV của dự án rồi kiểm tra lại kết quả. Kết nối nguồn tự động và lưu dữ liệu qua backend chưa được triển khai.</p></div></div>}
+        {tab === 'upload' && <CSVImportPanel />}
       </div>
     </Card>
   </div>;

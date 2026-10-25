@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   BookOpen, Plus, Trash2, ChevronDown, ChevronUp,
-  Save, GripVertical, Edit3, CheckSquare, FlaskConical,
+  Save, GripVertical, CheckSquare, FlaskConical,
   BarChart2, FileText, MessageSquare, Lightbulb, FileOutput
 } from 'lucide-react';
-import { Card, SectionHeader, Button, Badge } from '../components/ui';
+import { Card, Button } from '../components/ui';
 import type { NotebookBlock, BlockType, ResearchSession } from '../types';
 import { generateId } from '../utils';
+import { downloadText, printReport, reportHtml, reportMarkdown } from '../services/reports';
 
 // ─── Block type config ────────────────────────────────────────────────────────
 const BLOCK_TYPES: { type: BlockType; label: string; icon: React.ReactNode; placeholder: string; color: string }[] = [
@@ -80,7 +81,7 @@ function NotebookBlockEditor({ block, onUpdate, onDelete, onMoveUp, onMoveDown, 
               />
               <div className="mt-2 rounded-lg p-3 text-xs"
                 style={{ backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', color: '#0369A1' }}>
-                📊 Chức năng "Thêm biểu đồ từ Không gian phân tích" sẽ khả dụng sau khi tích hợp API.
+                Ghi mô tả biểu đồ, trạm và khoảng thời gian. Kết quả dự báo có thể thêm trực tiếp từ AI Research Lab.
               </div>
             </div>
           ) : (
@@ -168,6 +169,7 @@ export default function NotebookPage() {
     sessions.length > 0 ? sessions[0].id : null
   );
   const [saved, setSaved] = useState(false);
+  const [storageError, setStorageError] = useState('');
   const [addingBlock, setAddingBlock] = useState(false);
 
   const activeSession = sessions.find(s => s.id === activeSessionId);
@@ -176,7 +178,8 @@ export default function NotebookPage() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-    } catch { /* quota exceeded */ }
+      setStorageError('');
+    } catch { setStorageError('Không lưu được sổ tay trên trình duyệt. Hãy tải báo cáo để giữ nội dung.'); }
   }, [sessions]);
 
   const createSession = () => {
@@ -243,19 +246,23 @@ export default function NotebookPage() {
   };
 
   const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+      setStorageError(''); setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch { setSaved(false); setStorageError('Không lưu được sổ tay. Hãy tải báo cáo để giữ nội dung.'); }
   };
 
   return (
     <div className="space-y-4 max-w-[1400px]">
+      {storageError && <p role="alert" className="text-sm text-red-700">{storageError}</p>}
       <div>
         <div className="flex items-center gap-2.5">
           <BookOpen size={22} style={{ color: '#0891B2' }} />
           <h1 className="text-xl font-bold" style={{ color: '#12304A' }}>Sổ tay & báo cáo nghiên cứu</h1>
         </div>
         <p className="text-sm mt-1" style={{ color: '#64748B' }}>
-          Tạo và quản lý phiên nghiên cứu — lưu trữ bằng localStorage
+          Tạo phiên nghiên cứu, lưu trên trình duyệt và xuất báo cáo
         </p>
       </div>
 
@@ -285,10 +292,12 @@ export default function NotebookPage() {
           )}
 
           <div className="rounded-lg p-3 text-xs" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-            <div className="font-semibold mb-1" style={{ color: '#475569' }}>Xuất báo cáo PDF</div>
-            <div style={{ color: '#94A3B8' }}>Chưa hỗ trợ — sẽ khả dụng sau khi tích hợp backend</div>
-            <div className="mt-1">
-              <Badge color="slate">Chưa triển khai</Badge>
+            <div className="font-semibold mb-1" style={{ color: '#475569' }}>Xuất báo cáo phiên hiện tại</div>
+            <div className="space-y-2 mt-2">
+              <Button size="sm" disabled={!activeSession} onClick={() => { if (activeSession) printReport(activeSession); }}><FileOutput size={13} />In / Lưu PDF</Button>
+              <Button size="sm" variant="secondary" disabled={!activeSession} onClick={() => { if (activeSession) downloadText(`bao-cao-${activeSession.id}.html`, reportHtml(activeSession), 'text/html;charset=utf-8'); }}>Tải báo cáo HTML</Button>
+              <Button size="sm" variant="secondary" disabled={!activeSession} onClick={() => { if (activeSession) downloadText(`bao-cao-${activeSession.id}.md`, reportMarkdown(activeSession)); }}>Tải Markdown</Button>
+              <p className="text-slate-500">Trong hộp thoại in, chọn “Lưu dưới dạng PDF”. Báo cáo giữ toàn bộ nội dung và thứ tự các block.</p>
             </div>
           </div>
         </div>
@@ -333,7 +342,7 @@ export default function NotebookPage() {
                   </div>
                   <Button variant={saved ? 'primary' : 'secondary'} onClick={handleSave} size="sm">
                     <Save size={13} />
-                    {saved ? 'Đã lưu!' : 'Lưu (localStorage)'}
+                    {saved ? 'Đã lưu!' : 'Lưu sổ tay'}
                   </Button>
                 </div>
               </Card>

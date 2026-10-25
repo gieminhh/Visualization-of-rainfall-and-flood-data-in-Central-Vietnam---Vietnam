@@ -165,7 +165,7 @@ export interface FilterState {
 }
 
 // === AI Lab types ===
-export type ModelType = 'SARIMA' | 'XGBoost' | 'Baseline';
+export type ModelType = 'Ridge' | 'Seasonal';
 export type ForecastHorizon = 1 | 2 | 3;
 
 export interface ExperimentConfig {
@@ -200,7 +200,7 @@ export interface Experiment {
   config: ExperimentConfig;
   metrics: ModelMetrics[];
   forecast: ForecastPoint[];
-  is_demo: true;               // Always true in frontend phase
+  is_demo: false;              // Results computed from observed data
   notes: string;
 }
 
@@ -269,6 +269,7 @@ export interface Completeness {
 }
 
 export interface DataManifest {
+  imported_at?: string;
   schema_version: string;
   quality_encoding?: string;
   source_rows: Record<string, number>;

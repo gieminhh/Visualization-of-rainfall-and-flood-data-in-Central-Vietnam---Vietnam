@@ -18,11 +18,22 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const location = useLocation();
   const [sourceCounts, setSourceCounts] = useState('Đang đọc dữ liệu nguồn');
+  const [sourceStatus, setSourceStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [sourceLabel, setSourceLabel] = useState('Dữ liệu CSV');
   useEffect(() => {
     let active = true;
     dataService.getManifest().then(manifest => {
-      if (active) setSourceCounts(`${manifest.output_rows.daily_records.toLocaleString('vi-VN')} bản ghi · ${manifest.output_rows.stations} trạm`);
-    }).catch(() => { if (active) setSourceCounts('Chưa tải được dữ liệu nguồn'); });
+      if (active) {
+        setSourceCounts(`${manifest.output_rows.daily_records.toLocaleString('vi-VN')} bản ghi · ${manifest.output_rows.stations} trạm`);
+        setSourceStatus('ready');
+        setSourceLabel(manifest.imported_at ? 'CSV đã nhập' : 'CSV của dự án');
+      }
+    }).catch(() => {
+      if (active) {
+        setSourceCounts('Chưa tải được dữ liệu nguồn');
+        setSourceStatus('error');
+      }
+    });
     return () => { active = false; };
   }, []);
 
@@ -92,12 +103,13 @@ export default function Sidebar() {
           <div className="flex items-center gap-1.5 text-xs" style={{ color: '#475569' }}>
             <span className="px-1.5 py-0.5 rounded text-xs font-medium"
               style={{ backgroundColor: '#1e3a5f', color: '#60A5FA' }}>
-              v0.1 DEMO
+              {sourceLabel}
             </span>
-            <span>Frontend giai đoạn 1</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Circle size={6} fill="#059669" color="#059669" />
+            <Circle size={6}
+              fill={sourceStatus === 'ready' ? '#059669' : sourceStatus === 'error' ? '#DC2626' : '#94A3B8'}
+              color={sourceStatus === 'ready' ? '#059669' : sourceStatus === 'error' ? '#DC2626' : '#94A3B8'} />
             <span className="text-xs" style={{ color: '#6B7280' }}>{sourceCounts}</span>
           </div>
         </div>
