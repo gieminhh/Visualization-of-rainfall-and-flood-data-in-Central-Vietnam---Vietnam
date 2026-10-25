@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --color-primary: #12304A;
   --color-secondary: #2563EB;
@@ -8,9 +10,23 @@
   --color-bg: #F6F9FC;
   --color-card: #FFFFFF;
   --color-text: #1E293B;
+  --color-text-muted: #64748B;
   --color-border: #E2E8F0;
   --color-success: #059669;
   --color-warning: #D97706;
+}
+
+.dark {
+  --color-primary: #0F172A;
+  --color-secondary: #3B82F6;
+  --color-accent: #06B6D4;
+  --color-bg: #090D16;
+  --color-card: #0F172A;
+  --color-text: #F1F5F9;
+  --color-text-muted: #94A3B8;
+  --color-border: #1E293B;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
 }
 
 * {
@@ -19,10 +35,11 @@
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background-color: #F6F9FC;
-  color: #1E293B;
+  background-color: var(--color-bg);
+  color: var(--color-text);
   margin: 0;
   padding: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Leaflet map styles */
@@ -40,7 +57,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #F1F5F9;
+  background: var(--color-bg);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -48,8 +65,16 @@ body {
   border-radius: 3px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
 /* Smooth transitions */
